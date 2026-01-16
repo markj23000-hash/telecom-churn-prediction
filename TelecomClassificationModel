@@ -1,0 +1,151 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix, recall_score, precision_score
+from sklearn.model_selection import cross_val_score
+import numpy as np
+from sklearn.model_selection import GridSearchCV
+import time
+
+
+# Load the dataset
+df = pd.read_csv('telco_churn_preprocessed.csv')
+
+# num_customers = len(df)
+# print(f"Number of customers: {num_customers}")
+# B2/B3-----------------------------
+start_time = time.time()
+
+# Separate features (X) and target (y)
+X = df.drop('Churn', axis=1)
+y = df['Churn']
+
+# Split into training and test sets 80/20 split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+# Build random forest model
+rf_model = RandomForestClassifier(
+    n_estimators=100,      # Number of trees
+    random_state=42,       # For reproducibility
+    class_weight='balanced' # Handle class imbalance
+)
+
+# # Train the model
+# rf_model.fit(X_train, y_train)
+# print("Training model complete!")
+
+# B4-------------------------------
+
+# # Make predictions on test set
+# y_pred = rf_model.predict(X_test)
+
+# # Calculate metrics
+# recall = recall_score(y_test, y_pred)
+# precision = precision_score(y_test, y_pred)
+
+# print("Model Performance:")
+# print(f"Recall: {recall:.2%}")
+# print(f"Precision: {precision:.2%}")
+
+# print("\nConfusion Matrix:")
+# print(confusion_matrix(y_test, y_pred))
+
+# print("\nDetailed Classification Report:")
+# print(classification_report(y_test, y_pred))
+
+# # Feature importance
+# feature_importance = pd.DataFrame({
+#     'feature': X.columns,
+#     'importance': rf_model.feature_importances_
+# }).sort_values('importance', ascending=False)
+
+# print("\nTop 10 Most Important Features:")
+# print(feature_importance.head(10))
+
+# B5------------------------
+
+# # Perform 5-fold cross-validation on recall
+# cv_recall = cross_val_score(rf_model, X_train, y_train, cv=5, scoring='recall')
+
+# # Perform 5-fold cross-validation on precision
+# cv_precision = cross_val_score(rf_model, X_train, y_train, cv=5, scoring='precision')
+
+# print("Cross-Validation Results (5-fold):")
+# print(f"\nRecall scores: {cv_recall}")
+# print(f"Mean Recall: {cv_recall.mean():.2%}")
+# print(f"Std Recall: {cv_recall.std():.4f}")
+
+# print(f"\nPrecision scores: {cv_precision}")
+# print(f"Mean Precision: {cv_precision.mean():.2%}")
+# print(f"Std Precision: {cv_precision.std():.4f}")
+
+#B6--------------------------
+
+# Define hyperparameter grid to search
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [10, 20, 30, None],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4],
+    'class_weight': ['balanced', 'balanced_subsample']
+}
+
+# Create GridSearchCV object - optimizing for recall
+grid_search = GridSearchCV(
+    estimator=RandomForestClassifier(random_state=42),
+    param_grid=param_grid,
+    cv=5,
+    scoring='recall',  # Optimize for recall to hit 75% goal
+    n_jobs=-1,  # Use all CPU cores
+    verbose=0
+)
+
+print("Starting hyperparameter tuning... this may take a few minutes")
+
+# Fit the grid search
+grid_search.fit(X_train, y_train)
+
+print("\nBest parameters found:")
+print(grid_search.best_params_)
+print(f"\nBest cross-validated recall: {grid_search.best_score_:.2%}")
+
+# Get the best model
+best_rf_model = grid_search.best_estimator_
+
+# Evaluate on test set
+y_pred_optimized = best_rf_model.predict(X_test)
+
+recall_opt = recall_score(y_test, y_pred_optimized)
+precision_opt = precision_score(y_test, y_pred_optimized)
+
+print("\nOptimized Model Performance on Test Set:")
+print(f"Recall: {recall_opt:.2%}")
+print(f"Precision: {precision_opt:.2%}")
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_test, y_pred_optimized))
+end_time = time.time()
+processing_time = end_time - start_time
+
+print(f"Processing time: {processing_time:.2f} seconds")
+
+# After making predictions, get probability scores
+y_pred_proba = best_rf_model.predict_proba(X_test)
+
+# Create a DataFrame with customer info and churn probability
+results_df = pd.DataFrame({
+    'customer_index': X_test.index,  # Customer identifier
+    'churn_probability': y_pred_proba[:, 1]  # Probability of churn (class 1)
+})
+
+# Sort by churn probability (highest first)
+high_risk_customers = results_df.sort_values('churn_probability', ascending=False)
+
+# Get top 100 high-risk customers
+top_100_high_risk = high_risk_customers.head(100)
+
+print("Top 100 High-Risk Customers:")
+print(top_100_high_risk)
+
+# You can also see the range of probabilities
+print(f"\nHighest risk: {high_risk_customers['churn_probability'].max():.2%}")
+print(f"100th highest risk: {top_100_high_risk['churn_probability'].iloc[-1]:.2%}")
